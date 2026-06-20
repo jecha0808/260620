@@ -70,7 +70,7 @@ raw_df = get_earthquake_data()
 
 # --- 데이터 필터링 로직 ---
 if not raw_df.empty:
-    df = raw_df[raw_df['Magnitude'] >= min_mag]
+    df = raw_df[raw_df['Magnitude'] >= min_mag].copy()
     if search_query:
         df = df[df['Place'].str.contains(search_query, case=False, na=False)]
 else:
@@ -88,10 +88,12 @@ with tab1:
     search_msg = f" 중 '{search_query}' 검색 결과" if search_query else ""
     st.subheader(f"최근 7일간 발생한 규모 {min_mag} 이상 지진{search_msg} (총 {len(df)}건)")
     
-    # 🚨 핵심 수정: 데이터가 절대 비어있지 않을 때만 최고 강도 지진 및 지도를 계산합니다.
-    if not df.empty:
-        # 가장 강한 지진 계산을 안전하게 블록 내부에서 수행
-        max_eq = df.iloc[df['Magnitude'].idxmax()]
+    # 변경 포인트 🚨: 에러를 유발하는 idxmax()를 쓰지 않고 데이터 개수로만 조건 판단
+    if len(df) > 0:
+        # 정렬 알고리즘으로 안전하게 첫 번째(최대값) 추출
+        sorted_df = df.sort_values(by='Magnitude', ascending=False)
+        max_eq = sorted_df.iloc[0]
+        
         st.warning(f"🚨 **현재 조건 내 가장 강력한 지진:** {max_eq['Place']} (규모: {max_eq['Magnitude']}) - 발생 시각: {max_eq['Time']}")
         
         # 지도 중심점 설정
@@ -134,7 +136,6 @@ with tab1:
         st.subheader("📊 지진 데이터 상세보기")
         st.dataframe(df[['Time', 'Magnitude', 'Place', 'Depth (km)']], use_container_width=True)
     else:
-        # 데이터가 없을 때는 에러를 내지 않고 우아하게 메시지만 표시
         st.info("검색 조건에 맞는 지진 데이터가 최근 7일간 존재하지 않습니다. 검색어나 규모를 조절해 보세요.")
 
 # --- TAB 2: 지진 안전 AI 챗봇 ---
