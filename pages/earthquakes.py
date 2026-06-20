@@ -19,7 +19,6 @@ def get_earthquake_data():
     endtime = datetime.utcnow().isoformat()
     starttime = (datetime.utcnow() - timedelta(days=7)).isoformat()
     
-    # URL 형식 오류(No connection adapters)를 방지하기 위해 명확히 선언 및 공백 제거
     base_url = "https://earthquake.usgs.gov/fdsnws/event/1/query".strip()
     
     params = {
@@ -89,10 +88,13 @@ with tab1:
     search_msg = f" 중 '{search_query}' 검색 결과" if search_query else ""
     st.subheader(f"최근 7일간 발생한 규모 {min_mag} 이상 지진{search_msg} (총 {len(df)}건)")
     
+    # 🚨 핵심 수정: 데이터가 절대 비어있지 않을 때만 최고 강도 지진 및 지도를 계산합니다.
     if not df.empty:
+        # 가장 강한 지진 계산을 안전하게 블록 내부에서 수행
         max_eq = df.iloc[df['Magnitude'].idxmax()]
         st.warning(f"🚨 **현재 조건 내 가장 강력한 지진:** {max_eq['Place']} (규모: {max_eq['Magnitude']}) - 발생 시각: {max_eq['Time']}")
         
+        # 지도 중심점 설정
         map_center = [df.iloc[0]['Latitude'], df.iloc[0]['Longitude']] if search_query else [20, 0]
         zoom_level = 5 if search_query else 2
         
@@ -132,6 +134,7 @@ with tab1:
         st.subheader("📊 지진 데이터 상세보기")
         st.dataframe(df[['Time', 'Magnitude', 'Place', 'Depth (km)']], use_container_width=True)
     else:
+        # 데이터가 없을 때는 에러를 내지 않고 우아하게 메시지만 표시
         st.info("검색 조건에 맞는 지진 데이터가 최근 7일간 존재하지 않습니다. 검색어나 규모를 조절해 보세요.")
 
 # --- TAB 2: 지진 안전 AI 챗봇 ---
