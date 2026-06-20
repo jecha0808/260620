@@ -14,12 +14,12 @@ st.set_page_config(
 )
 
 # --- 1. USGS API 데이터 로드 함수 ---
-@st.cache_data(ttl=300) # 5분간 캐싱
+@st.cache_data(ttl=300)
 def get_earthquake_data():
     endtime = datetime.utcnow().isoformat()
     starttime = (datetime.utcnow() - timedelta(days=7)).isoformat()
     
-    url = f"https://earthquake.usgs.gov/fdsnws/event/1/query"
+    url = "[https://earthquake.usgs.gov/fdsnws/event/1/query](https://earthquake.usgs.gov/fdsnws/event/1/query)"
     params = {
         "format": "geojson",
         "starttime": starttime,
@@ -69,10 +69,7 @@ raw_df = get_earthquake_data()
 
 # --- 데이터 필터링 로직 ---
 if not raw_df.empty:
-    # 1. 규모 필터 적용
     df = raw_df[raw_df['Magnitude'] >= min_mag]
-    
-    # 2. 검색어 필터 적용 (대소문자 구분 없음)
     if search_query:
         df = df[df['Place'].str.contains(search_query, case=False, na=False)]
 else:
@@ -82,7 +79,7 @@ else:
 st.title("🌋 실시간 글로벌 지진 모니터링 & AI 대피 가이드")
 st.caption("USGS(미국 지질조사국)의 실시간 지진 데이터와 OpenAI를 결합한 웹앱입니다.")
 
-# ⭐ 탭 정의 (에러 방지를 위해 확실하게 메인 상단에 위치)
+# 탭 정의
 tab1, tab2 = st.tabs(["🗺️ 전세계 지진 시각화 맵", "💬 지진 안전 AI 챗봇"])
 
 # --- TAB 1: 전세계 지진 시각화 맵 ---
@@ -90,19 +87,15 @@ with tab1:
     search_msg = f" 중 '{search_query}' 검색 결과" if search_query else ""
     st.subheader(f"최근 7일간 발생한 규모 {min_mag} 이상 지진{search_msg} (총 {len(df)}건)")
     
-    # 1. 데이터가 완전히 비어있지 않을 때만 로직 실행
     if not df.empty:
-        # 최근 가장 강한 지진 알림 경고
         max_eq = df.iloc[df['Magnitude'].idxmax()]
         st.warning(f"🚨 **현재 조건 내 가장 강력한 지진:** {max_eq['Place']} (규모: {max_eq['Magnitude']}) - 발생 시각: {max_eq['Time']}")
         
-        # 지도 중심점 설정
         map_center = [df.iloc[0]['Latitude'], df.iloc[0]['Longitude']] if search_query else [20, 0]
         zoom_level = 5 if search_query else 2
         
         m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron")
         
-        # 지도에 지진 마커 추가
         for _, row in df.iterrows():
             if row['Magnitude'] >= 6.0:
                 color = '#ff0000'
@@ -110,4 +103,74 @@ with tab1:
             elif row['Magnitude'] >= 5.0:
                 color = '#ff6600'
                 radius = 8
-            else
+            else:
+                color = '#ffcc00'
+                radius = 5
+                
+            popup_text = f"""
+            <b>위치:</b> {row['Place']}<br>
+            <b>규모:</b> {row['Magnitude']}<br>
+            <b>시간:</b> {row['Time'].strftime('%Y-%m-%d %H:%M:%S')}<br>
+            <b>깊이:</b> {row['Depth (km)']} km<br>
+            <a href='{row['URL']}' target='_blank'>상세 정보 보기</a>
+            """
+            
+            folium.CircleMarker(
+                location=[row['Latitude'], row['Longitude']],
+                radius=radius,
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.6,
+                popup=folium.Popup(popup_text, max_width=300)
+            ).add_to(m)
+            
+        st_folium(m, width="100%", height=500, returned_objects=[])
+        
+        st.subheader("📊 지진 데이터 상세보기")
+        st.dataframe(df[['Time', 'Magnitude', 'Place', 'Depth (km)']], use_container_width=True)
+    else:
+        st.info("검색 조건에 맞는 지진 데이터가 최근 7일간 존재하지 않습니다. 검색어나 규모를 조절해 보세요.")
+
+# --- TAB 2: 지진 안전 AI 챗봇 ---
+with tab2:
+    st.subheader("💬 AI 지진 안전 비서")
+    st.write("지진 발생 시 대피 요령, 지진 용어 설명, 혹은 현재 발생한 위험 지역에 대해 물어보세요.")
+    
+    if not api_key:
+        st.info("💡 챗봇을 사용하려면 사이드바에 **OpenAI API Key**를 입력하거나 Streamlit Secrets 설정을 완료해주세요.")
+    else:
+        client = OpenAI(api_key=api_key)
+        
+        if "messages" not in st.session_state:
+            st.session_state.messages = [
+                {"role": "system", "content": "너는 전세계 지진 전문가이자 재난 안전 가이드야. 사용자의 질문에 친절하고 정확하게 답변해줘."}
+            ]
+            
+        for msg in st.session_state.messages:
+            if msg["role"] != "system":
+                with st.chat_message(msg["role"]):
+                    st.write(msg["content"])
+                    
+        if user_input := st.chat_input("질문을 입력하세요..."):
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            with st.chat_message("user"):
+                st.write(user_input)
+                
+            if ("최근" in user_input or "지진 현황" in user_input) and not df.empty:
+                top_3 = df.head(3)[['Place', 'Magnitude', 'Time']].to_string()
+                context_prompt = f"\n\n 참고로 현재 사용자가 검색한 조건 내 주요 지진 3개는 다음과 같아:\n{top_3}"
+                st.session_state.messages[-1]["content"] += context_prompt
+
+            with st.chat_message("assistant"):
+                with st.spinner("생각 중..."):
+                    try:
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=st.session_state.messages
+                        )
+                        ans_text = response.choices[0].message.content
+                        st.write(ans_text)
+                        st.session_state.messages.append({"role": "assistant", "content": ans_text})
+                    except Exception as e:
+                        st.error(f"OpenAI API 호출 에러: {e}")
