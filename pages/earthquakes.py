@@ -19,7 +19,9 @@ def get_earthquake_data():
     endtime = datetime.utcnow().isoformat()
     starttime = (datetime.utcnow() - timedelta(days=7)).isoformat()
     
-    url = "[https://earthquake.usgs.gov/fdsnws/event/1/query](https://earthquake.usgs.gov/fdsnws/event/1/query)"
+    # URL 형식 오류(No connection adapters)를 방지하기 위해 명확히 선언 및 공백 제거
+    base_url = "https://earthquake.usgs.gov/fdsnws/event/1/query".strip()
+    
     params = {
         "format": "geojson",
         "starttime": starttime,
@@ -28,7 +30,7 @@ def get_earthquake_data():
     }
     
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(base_url, params=params)
         data = response.json()
         
         features = data.get("features", [])
